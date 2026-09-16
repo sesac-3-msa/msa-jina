@@ -1,6 +1,6 @@
 # EKS + Spring Boot MSA 실습 작업 지시서
 
-> 개인 실습 / 1일 완주
+> 개인 실습 / 1일 완주!
 > Claude Code 실행용 스펙 문서
 
 ---
