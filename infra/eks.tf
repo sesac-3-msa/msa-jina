@@ -4,6 +4,7 @@ module "eks" {
 
   cluster_name    = var.cluster_name
   cluster_version = var.cluster_version
+  tags            = local.tags
 
   vpc_id = module.vpc.vpc_id
   # 노드는 프라이빗 서브넷에만 배치

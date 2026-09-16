@@ -4,6 +4,7 @@ module "vpc" {
 
   name = "${var.cluster_name}-vpc"
   cidr = var.vpc_cidr
+  tags = local.tags
 
   azs             = var.azs
   public_subnets  = var.public_subnets
