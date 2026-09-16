@@ -14,6 +14,7 @@ provider "aws" {
 
   default_tags {
     tags = {
+      Owner     = var.name_prefix
       Project   = var.cluster_name
       ManagedBy = "terraform"
     }

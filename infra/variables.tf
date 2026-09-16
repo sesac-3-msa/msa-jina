@@ -1,3 +1,9 @@
+variable "name_prefix" {
+  description = "모든 AWS 리소스 이름 접두어 및 Owner 태그 값 (공유 계정에서 소유자 구분용)"
+  type        = string
+  default     = "c2"
+}
+
 variable "region" {
   description = "AWS 리전"
   type        = string
@@ -7,7 +13,7 @@ variable "region" {
 variable "cluster_name" {
   description = "EKS 클러스터명 (VPC, IAM, 태그 접두어로도 사용)"
   type        = string
-  default     = "eks-msa-practice"
+  default     = "c2-eks-msa-practice"
 }
 
 variable "cluster_version" {
@@ -51,8 +57,8 @@ variable "ecr_repositories" {
   description = "생성할 ECR 리포 이름 (key = output 접미어, value = 리포 이름)"
   type        = map(string)
   default = {
-    gateway = "gateway"
-    member  = "member-service"
-    order   = "order-service"
+    gateway = "c2-gateway"
+    member  = "c2-member-service"
+    order   = "c2-order-service"
   }
 }

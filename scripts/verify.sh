@@ -45,9 +45,10 @@ UID_=$(curl -s -m 10 "http://$NLB/api/members/me" -H "Authorization: Bearer $TOK
 step 7a "로드밸런싱 — 게이트웨이 경유 20회 (Netty 커넥션 재사용으로 쏠릴 수 있음)"
 for i in $(seq 20); do curl -s -m 10 "http://$NLB/api/orders" -H "Authorization: Bearer $TOKEN" | jq -r .pod; done | sort | uniq -c | sed 's/^/  /'
 
-step 7b "로드밸런싱 — 클러스터 내부에서 order-svc 직접 호출 20회"
-INNER=$(kubectl run lb-check --rm -i --restart=Never -n app --image=curlimages/curl:8.10.1 -q -- \
-  sh -c 'for i in $(seq 20); do curl -s http://order-svc:8080/api/orders; echo; done' 2>/dev/null | grep -o '"pod":"[^"]*"' | sort | uniq -c)
+step 7b "로드밸런싱 — 클러스터 내부(gateway ns)에서 order-svc 직접 호출 20회"
+# NetworkPolicy가 gateway 네임스페이스만 허용하므로 검증 파드도 gateway에서 띄운다 (app ns 내부 파드끼리도 차단됨)
+INNER=$(kubectl run lb-check --rm -i --restart=Never -n gateway --image=curlimages/curl:8.10.1 -q -- \
+  sh -c 'for i in $(seq 20); do curl -s -m 5 http://order-svc.app.svc.cluster.local:8080/api/orders; echo; done' 2>/dev/null | grep -o '"pod":"[^"]*"' | sort | uniq -c)
 echo "$INNER" | sed 's/^/  /'
 DISTINCT=$(echo "$INNER" | wc -l)
 [[ "$DISTINCT" -ge 2 ]] && ok "파드 $DISTINCT종으로 분산" || fail "파드 $DISTINCT종 (기대 2)"

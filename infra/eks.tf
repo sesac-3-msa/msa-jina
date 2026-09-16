@@ -32,7 +32,11 @@ module "eks" {
   cloudwatch_log_group_retention_in_days = 1
 
   eks_managed_node_groups = {
-    default = {
+    main = {
+      # 런치 템플릿 tag_specifications 의 Name = 노드그룹 이름 → EC2 인스턴스 이름이 된다
+      name            = "${var.cluster_name}-node"
+      use_name_prefix = false
+
       instance_types = [var.node_instance_type]
       ami_type       = "AL2023_x86_64_STANDARD"
 
