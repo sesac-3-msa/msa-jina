@@ -4,7 +4,9 @@
   gather_facts: false
 
   vars:
-    namespaces: [gateway, app]
+    ns_gateway: "{{ k8s_prefix }}-gateway"
+    ns_app: "{{ k8s_prefix }}-app"
+    namespaces: ["{{ ns_gateway }}", "{{ ns_app }}"]
 
   tasks:
     - name: Create namespaces
@@ -33,7 +35,7 @@
       loop: "{{ namespaces }}"
       no_log: true
 
-    # app 네임스페이스는 gateway 네임스페이스에서 오는 인그레스만 허용
+    # c2-app 네임스페이스는 c2-gateway 네임스페이스에서 오는 인그레스만 허용
     - name: Apply NetworkPolicy (allow only from gateway namespace)
       kubernetes.core.k8s:
         state: present
@@ -41,5 +43,5 @@
       vars:
         policy:
           name: allow-from-gateway
-          namespace: app
-          from_namespaces: [gateway]
+          namespace: "{{ ns_app }}"
+          from_namespaces: ["{{ ns_gateway }}"]

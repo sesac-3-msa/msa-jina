@@ -5,21 +5,23 @@
 
   vars:
     replicas: 2
+    ns_gateway: "{{ k8s_prefix }}-gateway"
+    ns_app: "{{ k8s_prefix }}-app"
     services:
-      - name: gateway-svc
-        namespace: gateway
+      - name: "{{ k8s_prefix }}-gateway-svc"
+        namespace: "{{ ns_gateway }}"
         image: "{{ ecr_gateway }}"
         type: LoadBalancer
         port: 80
         env:
-          - { name: MEMBER_SERVICE_URL, value: "http://member-svc.app.svc.cluster.local:8080" }
-          - { name: ORDER_SERVICE_URL,  value: "http://order-svc.app.svc.cluster.local:8080" }
-      - name: member-svc
-        namespace: app
+          - { name: MEMBER_SERVICE_URL, value: "http://{{ k8s_prefix }}-member-svc.{{ ns_app }}.svc.cluster.local:8080" }
+          - { name: ORDER_SERVICE_URL,  value: "http://{{ k8s_prefix }}-order-svc.{{ ns_app }}.svc.cluster.local:8080" }
+      - name: "{{ k8s_prefix }}-member-svc"
+        namespace: "{{ ns_app }}"
         image: "{{ ecr_member }}"
         type: ClusterIP
-      - name: order-svc
-        namespace: app
+      - name: "{{ k8s_prefix }}-order-svc"
+        namespace: "{{ ns_app }}"
         image: "{{ ecr_order }}"
         type: ClusterIP
 
@@ -57,8 +59,8 @@
     - name: Get gateway NLB hostname
       kubernetes.core.k8s_info:
         kind: Service
-        namespace: gateway
-        name: gateway-svc
+        namespace: "{{ ns_gateway }}"
+        name: "{{ k8s_prefix }}-gateway-svc"
       register: gw
       until: gw.resources[0].status.loadBalancer.ingress is defined
       retries: 30

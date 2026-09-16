@@ -7,6 +7,7 @@ cd "$(dirname "$0")/.."
 
 TAG=${1:?"사용법: $0 <IMAGE_TAG>"}
 JWT_SECRET=${JWT_SECRET:-$(openssl rand -base64 48 | tr -d '\n')}
+K8S_PREFIX=${K8S_PREFIX:-c2}   # 쿠버네티스 리소스(네임스페이스/서비스/디플로이먼트) 이름 접두어
 
 tf() { terraform -chdir=infra output -raw "$1"; }
 
@@ -14,6 +15,7 @@ cat > ansible/group_vars/all.yml <<YAML
 # 자동 생성됨 (scripts/gen-ansible-vars.sh) — 직접 수정하지 말 것
 region: "$(tf region)"
 cluster_name: "$(tf cluster_name)"
+k8s_prefix: "$K8S_PREFIX"
 vpc_id: "$(tf vpc_id)"
 public_subnet_cidrs: $(terraform -chdir=infra output -json public_subnet_cidrs)
 lb_controller_role_arn: "$(tf lb_controller_role_arn)"

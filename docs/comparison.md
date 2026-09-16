@@ -6,11 +6,11 @@
 
 ## 1. Ingress (ALB) vs Spring Cloud Gateway (SCG)
 
-이 실습에서는 둘을 **같은 클러스터에 동시에** 띄워 같은 백엔드(`member-svc`, `order-svc`)를 두 경로로 노출했다.
+이 실습에서는 둘을 **같은 클러스터에 동시에** 띄워 같은 백엔드(`c2-member-svc`, `c2-order-svc`)를 두 경로로 노출했다.
 
 ```
-[클라이언트] ──> NLB ──> gateway-svc 파드(SCG, JWT 검증) ──> member-svc / order-svc   (5단계)
-[클라이언트] ──> ALB(Ingress) ─────────────────────────────> member-svc / order-svc   (6단계)
+[클라이언트] ──> NLB ──> c2-gateway-svc 파드(SCG, JWT 검증) ──> c2-member-svc / c2-order-svc   (5단계)
+[클라이언트] ──> ALB(Ingress) ─────────────────────────────> c2-member-svc / c2-order-svc   (6단계)
 ```
 
 ### 1-1. 비교표
@@ -42,7 +42,7 @@
 **SCG** — `application.yml` 수정 후 게이트웨이 파드 재시작 필요:
 ```yaml
 - id: payment
-  uri: http://payment-svc.app.svc.cluster.local:8080
+  uri: http://payment-svc.c2-app.svc.cluster.local:8080
   predicates:
     - Path=/api/payments/**
 ```
@@ -65,7 +65,7 @@ public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
     // 7. 다음 필터로
 }
 ```
-백엔드(`member-svc`, `order-svc`)는 JWT 라이브러리조차 없이 `X-User-Id` 헤더만 신뢰하면 된다. 단, 이 신뢰는 **게이트웨이를 우회할 수 없을 때만** 성립하므로 `app` 네임스페이스에 NetworkPolicy로 `gateway` 네임스페이스 외 인그레스를 차단했다.
+백엔드(`c2-member-svc`, `c2-order-svc`)는 JWT 라이브러리조차 없이 `X-User-Id` 헤더만 신뢰하면 된다. 단, 이 신뢰는 **게이트웨이를 우회할 수 없을 때만** 성립하므로 `c2-app` 네임스페이스에 NetworkPolicy로 `c2-gateway` 네임스페이스 외 인그레스를 차단했다.
 
 ### 1-4. 실습에서 관찰한 것
 
@@ -78,7 +78,7 @@ public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
 | 20회 `GET /api/orders` 파드 분포 | 16 : 4 (Netty 커넥션 재사용으로 쏠림) | — |
 
 - **Ingress에는 JWT 검증이 없다.** ALB는 요청 헤더를 보고 거부하는 규칙을 표현할 수 없기 때문에, 토큰이 없어도 200이 나온다. 이 실습에서 SCG를 택한 이유가 정확히 이것이다.
-- **NetworkPolicy와의 충돌**: `app` 네임스페이스는 `gateway` 네임스페이스만 허용하도록 잠겨 있어 ALB(퍼블릭 서브넷 ENI → 파드 IP)에서 오는 트래픽이 처음엔 막혔다. 비교를 위해 퍼블릭 서브넷 CIDR(`10.0.0.0/24`, `10.0.1.0/24`)을 허용하는 정책(`allow-from-alb`)을 추가해야 했다. **Ingress를 쓰면 뒷단 보호를 인증이 아니라 이런 네트워크 수단에 의존하게 된다.**
+- **NetworkPolicy와의 충돌**: `c2-app` 네임스페이스는 `c2-gateway` 네임스페이스만 허용하도록 잠겨 있어 ALB(퍼블릭 서브넷 ENI → 파드 IP)에서 오는 트래픽이 처음엔 막혔다. 비교를 위해 퍼블릭 서브넷 CIDR(`10.0.0.0/24`, `10.0.1.0/24`)을 허용하는 정책(`allow-from-alb`)을 추가해야 했다. **Ingress를 쓰면 뒷단 보호를 인증이 아니라 이런 네트워크 수단에 의존하게 된다.**
 - **홉 수 차이가 응답 지연으로 보인다**: ALB는 파드로 직행하지만 SCG 경로는 NLB → SCG 파드 → 서비스 파드로 한 홉이 더 있다.
 - **LB 컨트롤러는 같다**: 둘 다 AWS Load Balancer Controller가 만든다. Service(type=LoadBalancer, `aws-load-balancer-type: external`) → NLB, Ingress(class=alb) → ALB. 어노테이션 하나로 어느 쪽이 되는지가 갈린다.
 
@@ -104,15 +104,15 @@ public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
 | 언어 종속 | 없음 (DNS는 어디서나) | Spring/Java 중심 |
 | 로드밸런싱 | kube-proxy (iptables/IPVS, L4) | Spring Cloud LoadBalancer (클라이언트, L7) |
 | 헬스체크 | readinessProbe → Endpoints 반영 | 하트비트 (30초 간격) + 자기보호 모드 |
-| 호출 주소 | `http://order-svc.app.svc.cluster.local:8080` | `http://ORDER-SERVICE/...` (서비스 ID) |
+| 호출 주소 | `http://c2-order-svc.c2-app.svc.cluster.local:8080` | `http://ORDER-SERVICE/...` (서비스 ID) |
 
 ### 2-2. 코드 차이
 
 **CoreDNS** — 추가 의존성 없음. DNS 이름만 알면 된다. 이 실습의 게이트웨이가 정확히 이렇게 한다:
 ```yaml
 # ansible/03-deploy.yml → gateway 환경변수
-MEMBER_SERVICE_URL: http://member-svc.app.svc.cluster.local:8080
-ORDER_SERVICE_URL:  http://order-svc.app.svc.cluster.local:8080
+MEMBER_SERVICE_URL: http://c2-member-svc.c2-app.svc.cluster.local:8080
+ORDER_SERVICE_URL:  http://c2-order-svc.c2-app.svc.cluster.local:8080
 ```
 ```yaml
 # apps/gateway/src/main/resources/application.yml
@@ -166,10 +166,10 @@ webClient.get().uri("http://ORDER-SERVICE/api/orders")
 
 이 실습은 Eureka 없이 CoreDNS만으로 동작한다. 관찰한 것:
 
-- 게이트웨이는 `http://order-svc.app.svc.cluster.local:8080` 라는 **DNS 이름만** 알고 있다. 파드 IP를 알 필요도, 레지스트리에 등록할 필요도 없다. order-service에는 디스커버리 관련 의존성이 한 줄도 없다(`build.gradle`에 web + actuator뿐).
-- 클러스터 내부에서 `order-svc`를 20회 직접 호출하면 두 파드가 6 : 14 로 섞여 나온다. kube-proxy가 Endpoints 목록을 보고 분산한 것이다. 클라이언트 쪽 로드밸런서(Spring Cloud LoadBalancer)가 없어도 된다.
+- 게이트웨이는 `http://c2-order-svc.c2-app.svc.cluster.local:8080` 라는 **DNS 이름만** 알고 있다. 파드 IP를 알 필요도, 레지스트리에 등록할 필요도 없다. order-service에는 디스커버리 관련 의존성이 한 줄도 없다(`build.gradle`에 web + actuator뿐).
+- 클러스터 내부에서 `c2-order-svc`를 20회 직접 호출하면 두 파드가 6 : 14 로 섞여 나온다. kube-proxy가 Endpoints 목록을 보고 분산한 것이다. 클라이언트 쪽 로드밸런서(Spring Cloud LoadBalancer)가 없어도 된다.
 - 게이트웨이를 경유하면 16 : 4 로 쏠린다. SCG의 Netty 클라이언트가 커넥션을 재사용하기 때문이며, DNS/kube-proxy는 **새 커넥션**을 맺을 때만 분산한다. Eureka + Spring Cloud LoadBalancer였다면 요청 단위 라운드로빈이 됐을 것이다 — 클라이언트 사이드 디스커버리의 장점 중 하나.
-- `kubectl delete pod` 로 order-svc 파드 하나를 지우는 동안 게이트웨이 경유 호출이 계속 200을 반환했다. 파드가 Terminating으로 바뀌는 순간 Endpoints에서 빠지므로 새 요청이 죽은 파드로 가지 않는다. Eureka였다면 하트비트 만료(최대 90초)까지 레지스트리에 남아 실패 응답이 섞였을 것이다.
+- `kubectl delete pod` 로 c2-order-svc 파드 하나를 지우는 동안 게이트웨이 경유 호출이 계속 200을 반환했다. 파드가 Terminating으로 바뀌는 순간 Endpoints에서 빠지므로 새 요청이 죽은 파드로 가지 않는다. Eureka였다면 하트비트 만료(최대 90초)까지 레지스트리에 남아 실패 응답이 섞였을 것이다.
 - `-n default` 에서 같은 DNS 이름으로 호출하면 타임아웃된다. DNS 조회는 성공하지만(CoreDNS는 네임스페이스 구분 없이 응답) NetworkPolicy가 패킷을 막는다 — **디스커버리와 접근 제어는 별개 계층**이다. Eureka는 후자를 제공하지 않는다.
 
 ### 2-5. 결론

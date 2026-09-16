@@ -9,7 +9,7 @@
 $(terraform -chdir=infra output -raw kubeconfig_command)
 
 # NLB 주소 변수로
-NLB=$(kubectl get svc -n gateway gateway-svc -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'); echo $NLB
+NLB=$(kubectl get svc -n c2-gateway c2-gateway-svc -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'); echo $NLB
 ```
 
 ## 1. 노드 2개 Ready (요구사항 1)
@@ -28,10 +28,10 @@ aws ec2 describe-instances --region ap-northeast-2 --filters Name=instance-state
 ## 2. 파드 6개 Running, 두 노드에 분산 (요구사항 5)
 
 ```bash
-kubectl get pods -n gateway -o wide
-kubectl get pods -n app -o wide
+kubectl get pods -n c2-gateway -o wide
+kubectl get pods -n c2-app -o wide
 ```
-기대: gateway 2, member 2, order 2. 같은 앱의 두 파드가 서로 다른 NODE에 있음.
+기대: c2-gateway-svc 2, c2-member-svc 2, c2-order-svc 2. 같은 앱의 두 파드가 서로 다른 NODE에 있음.
 
 ## 3. 미인증 차단 → 401
 
@@ -81,23 +81,23 @@ done | sort | uniq -c
 
 ### 7b. 클러스터 내부에서 Service 직접 호출 — 순수 kube-proxy 분산
 ```bash
-kubectl run tmp --rm -it --restart=Never -n gateway --image=curlimages/curl:8.10.1 -- \
-  sh -c 'for i in $(seq 20); do curl -s -m 5 http://order-svc.app.svc.cluster.local:8080/api/orders; echo; done' \
+kubectl run tmp --rm -it --restart=Never -n c2-gateway --image=curlimages/curl:8.10.1 -- \
+  sh -c 'for i in $(seq 20); do curl -s -m 5 http://c2-order-svc.c2-app.svc.cluster.local:8080/api/orders; echo; done' \
   | grep -o '"pod":"[^"]*"' | sort | uniq -c
 ```
 기대: 파드명 2종이 섞여 나옴.
-> `-n gateway`인 이유: `app` 네임스페이스는 NetworkPolicy로 `gateway`에서 온 트래픽만 허용한다. `app` 안에서 띄우면 같은 네임스페이스라도 차단된다.
+> `-n c2-gateway`인 이유: `c2-app` 네임스페이스는 NetworkPolicy로 `c2-gateway`에서 온 트래픽만 허용한다. `c2-app` 안에서 띄우면 같은 네임스페이스라도 차단된다.
 
 ## 8. NetworkPolicy 우회 차단
 
 ```bash
 kubectl run tmp --rm -it --restart=Never -n default --image=curlimages/curl:8.10.1 -- \
-  curl -m 5 -o /dev/null -w "%{http_code}\n" http://order-svc.app.svc.cluster.local:8080/api/orders
+  curl -m 5 -o /dev/null -w "%{http_code}\n" http://c2-order-svc.c2-app.svc.cluster.local:8080/api/orders
 ```
 기대: `000` (타임아웃). `default` 네임스페이스에서는 게이트웨이를 우회해 접근할 수 없다.
 
 ```bash
-kubectl get networkpolicy -n app
+kubectl get networkpolicy -n c2-app
 kubectl -n kube-system get ds aws-node -o jsonpath='{.spec.template.spec.containers[*].name}'; echo
 ```
 기대: `allow-from-gateway`, `allow-from-alb` / `aws-node aws-eks-nodeagent` (nodeagent가 NetworkPolicy 시행 주체).
@@ -110,15 +110,15 @@ while true; do curl -s -o /dev/null -w "%{http_code} " http://$NLB/api/orders -H
 ```
 터미널 2 — 파드 삭제:
 ```bash
-kubectl delete pod -n app $(kubectl get pods -n app -l app=order-svc -o jsonpath='{.items[0].metadata.name}')
-kubectl get pods -n app -l app=order-svc -w
+kubectl delete pod -n c2-app $(kubectl get pods -n c2-app -l app=c2-order-svc -o jsonpath='{.items[0].metadata.name}')
+kubectl get pods -n c2-app -l app=c2-order-svc -w
 ```
 기대: 터미널 1은 `200`만 찍히고, 터미널 2에서 새 파드가 뜸.
 
 ## 10. Ingress 비교 (요구사항 6)
 
 ```bash
-ALB=$(kubectl get ingress -n app app-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'); echo $ALB
+ALB=$(kubectl get ingress -n c2-app c2-app-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'); echo $ALB
 curl -s -o /dev/null -w "%{http_code}\n" http://$ALB/api/orders          # 토큰 없음
 curl -s http://$ALB/api/members/me -H "X-User-Id: hacker" | jq          # 헤더 위조
 ```

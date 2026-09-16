@@ -6,6 +6,9 @@
   hosts: local
   gather_facts: false
 
+  vars:
+    ns_app: "{{ k8s_prefix }}-app"
+
   tasks:
     - name: Allow ingress from ALB (public subnet CIDRs)
       kubernetes.core.k8s:
@@ -14,7 +17,7 @@
       vars:
         policy:
           name: allow-from-alb
-          namespace: app
+          namespace: "{{ ns_app }}"
           from_cidrs: "{{ public_subnet_cidrs }}"
 
     - name: Apply Ingress
@@ -24,8 +27,8 @@
           apiVersion: networking.k8s.io/v1
           kind: Ingress
           metadata:
-            name: app-ingress
-            namespace: app
+            name: "{{ k8s_prefix }}-app-ingress"
+            namespace: "{{ ns_app }}"
             annotations:
               alb.ingress.kubernetes.io/scheme: internet-facing
               alb.ingress.kubernetes.io/target-type: ip
@@ -39,22 +42,22 @@
                       pathType: Prefix
                       backend:
                         service:
-                          name: member-svc
+                          name: "{{ k8s_prefix }}-member-svc"
                           port:
                             number: 8080
                     - path: /api/orders
                       pathType: Prefix
                       backend:
                         service:
-                          name: order-svc
+                          name: "{{ k8s_prefix }}-order-svc"
                           port:
                             number: 8080
 
     - name: Wait for ALB hostname
       kubernetes.core.k8s_info:
         kind: Ingress
-        namespace: app
-        name: app-ingress
+        namespace: "{{ ns_app }}"
+        name: "{{ k8s_prefix }}-app-ingress"
       register: ing
       until: ing.resources[0].status.loadBalancer.ingress is defined
       retries: 30
