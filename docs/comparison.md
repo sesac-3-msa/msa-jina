@@ -69,7 +69,18 @@ public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
 
 ### 1-4. 실습에서 관찰한 것
 
-<!-- OBSERVED_INGRESS -->
+같은 백엔드를 NLB→SCG 경로와 ALB(Ingress) 경로로 각각 호출한 결과:
+
+| 요청 | NLB → SCG | ALB (Ingress) |
+|---|---|---|
+| `GET /api/orders` 토큰 없음 | **401** | **200** |
+| `GET /api/members/me` + `X-User-Id: hacker` (유효 토큰) | `userId: user1` (헤더 제거·재주입) | `userId: hacker` (그대로 전달) |
+| 20회 `GET /api/orders` 파드 분포 | 16 : 4 (Netty 커넥션 재사용으로 쏠림) | — |
+
+- **Ingress에는 JWT 검증이 없다.** ALB는 요청 헤더를 보고 거부하는 규칙을 표현할 수 없기 때문에, 토큰이 없어도 200이 나온다. 이 실습에서 SCG를 택한 이유가 정확히 이것이다.
+- **NetworkPolicy와의 충돌**: `app` 네임스페이스는 `gateway` 네임스페이스만 허용하도록 잠겨 있어 ALB(퍼블릭 서브넷 ENI → 파드 IP)에서 오는 트래픽이 처음엔 막혔다. 비교를 위해 퍼블릭 서브넷 CIDR(`10.0.0.0/24`, `10.0.1.0/24`)을 허용하는 정책(`allow-from-alb`)을 추가해야 했다. **Ingress를 쓰면 뒷단 보호를 인증이 아니라 이런 네트워크 수단에 의존하게 된다.**
+- **홉 수 차이가 응답 지연으로 보인다**: ALB는 파드로 직행하지만 SCG 경로는 NLB → SCG 파드 → 서비스 파드로 한 홉이 더 있다.
+- **LB 컨트롤러는 같다**: 둘 다 AWS Load Balancer Controller가 만든다. Service(type=LoadBalancer, `aws-load-balancer-type: external`) → NLB, Ingress(class=alb) → ALB. 어노테이션 하나로 어느 쪽이 되는지가 갈린다.
 
 ### 1-5. 결론
 
@@ -153,7 +164,13 @@ webClient.get().uri("http://ORDER-SERVICE/api/orders")
 
 ### 2-4. 실습에서 관찰한 것
 
-<!-- OBSERVED_DNS -->
+이 실습은 Eureka 없이 CoreDNS만으로 동작한다. 관찰한 것:
+
+- 게이트웨이는 `http://order-svc.app.svc.cluster.local:8080` 라는 **DNS 이름만** 알고 있다. 파드 IP를 알 필요도, 레지스트리에 등록할 필요도 없다. order-service에는 디스커버리 관련 의존성이 한 줄도 없다(`build.gradle`에 web + actuator뿐).
+- 클러스터 내부에서 `order-svc`를 20회 직접 호출하면 두 파드가 6 : 14 로 섞여 나온다. kube-proxy가 Endpoints 목록을 보고 분산한 것이다. 클라이언트 쪽 로드밸런서(Spring Cloud LoadBalancer)가 없어도 된다.
+- 게이트웨이를 경유하면 16 : 4 로 쏠린다. SCG의 Netty 클라이언트가 커넥션을 재사용하기 때문이며, DNS/kube-proxy는 **새 커넥션**을 맺을 때만 분산한다. Eureka + Spring Cloud LoadBalancer였다면 요청 단위 라운드로빈이 됐을 것이다 — 클라이언트 사이드 디스커버리의 장점 중 하나.
+- `kubectl delete pod` 로 order-svc 파드 하나를 지우는 동안 게이트웨이 경유 호출이 계속 200을 반환했다. 파드가 Terminating으로 바뀌는 순간 Endpoints에서 빠지므로 새 요청이 죽은 파드로 가지 않는다. Eureka였다면 하트비트 만료(최대 90초)까지 레지스트리에 남아 실패 응답이 섞였을 것이다.
+- `-n default` 에서 같은 DNS 이름으로 호출하면 타임아웃된다. DNS 조회는 성공하지만(CoreDNS는 네임스페이스 구분 없이 응답) NetworkPolicy가 패킷을 막는다 — **디스커버리와 접근 제어는 별개 계층**이다. Eureka는 후자를 제공하지 않는다.
 
 ### 2-5. 결론
 

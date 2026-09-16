@@ -37,6 +37,10 @@ module "eks" {
       name            = "${var.cluster_name}-node"
       use_name_prefix = false
 
+      # IAM 역할 name_prefix 38자 제한 회피 (기본값: "<노드그룹명>-eks-node-group-")
+      iam_role_name            = "${var.cluster_name}-node"
+      iam_role_use_name_prefix = false
+
       instance_types = [var.node_instance_type]
       ami_type       = "AL2023_x86_64_STANDARD"
 
