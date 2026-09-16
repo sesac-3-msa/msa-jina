@@ -1,0 +1,23 @@
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/.terraform.lock.hcl
+infra/iam-policy.json
+
+# Gradle / Java
+**/build/
+**/.gradle/
+*.jar
+!**/gradle/wrapper/gradle-wrapper.jar
+*.class
+
+# Ansible generated vars
+ansible/group_vars/all.yml
+ansible/*.retry
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store

@@ -1,0 +1,30 @@
+# 로컬 통합 확인용. 게이트웨이만 호스트 8080에 노출한다.
+# JWT_SECRET은 세 서비스(실제로는 gateway/member)에 동일하게 주입해야 한다.
+x-jwt: &jwt
+  JWT_SECRET: local-dev-secret-key-must-be-at-least-32-bytes-long
+
+services:
+  gateway:
+    build: ./gateway
+    ports:
+      - "8080:8080"
+    environment:
+      <<: *jwt
+      MEMBER_SERVICE_URL: http://member-service:8080
+      ORDER_SERVICE_URL: http://order-service:8080
+      POD_NAME: gateway-local
+    depends_on:
+      - member-service
+      - order-service
+
+  member-service:
+    build: ./member-service
+    environment:
+      <<: *jwt
+      POD_NAME: member-local
+
+  order-service:
+    build: ./order-service
+    environment:
+      <<: *jwt
+      POD_NAME: order-local
