@@ -3,7 +3,6 @@ infra/.terraform/
 infra/*.tfstate
 infra/*.tfstate.*
 infra/.terraform.lock.hcl
-infra/iam-policy.json
 
 # Gradle / Java
 **/build/
