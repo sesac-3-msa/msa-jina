@@ -29,3 +29,8 @@ output "ecr_member_url" {
 output "ecr_order_url" {
   value = aws_ecr_repository.this["order"].repository_url
 }
+
+output "public_subnet_cidrs" {
+  description = "ALB ENI가 위치하는 CIDR — Ingress 비교 실습 시 NetworkPolicy 허용 대상"
+  value       = module.vpc.public_subnets_cidr_blocks
+}

@@ -1,0 +1,69 @@
+# Deployment 3개 + Service 3개
+- name: Deploy microservices
+  hosts: local
+  gather_facts: false
+
+  vars:
+    replicas: 2
+    services:
+      - name: gateway-svc
+        namespace: gateway
+        image: "{{ ecr_gateway }}"
+        type: LoadBalancer
+        port: 80
+        env:
+          - { name: MEMBER_SERVICE_URL, value: "http://member-svc.app.svc.cluster.local:8080" }
+          - { name: ORDER_SERVICE_URL,  value: "http://order-svc.app.svc.cluster.local:8080" }
+      - name: member-svc
+        namespace: app
+        image: "{{ ecr_member }}"
+        type: ClusterIP
+      - name: order-svc
+        namespace: app
+        image: "{{ ecr_order }}"
+        type: ClusterIP
+
+  tasks:
+    - name: Apply Deployments
+      kubernetes.core.k8s:
+        state: present
+        template: templates/deployment.yaml.j2
+      loop: "{{ services }}"
+      loop_control:
+        label: "{{ item.namespace }}/{{ item.name }}"
+
+    - name: Apply Services
+      kubernetes.core.k8s:
+        state: present
+        template: templates/service.yaml.j2
+      loop: "{{ services }}"
+      loop_control:
+        label: "{{ item.namespace }}/{{ item.name }}"
+
+    - name: Wait for Deployments to become available
+      kubernetes.core.k8s_info:
+        kind: Deployment
+        namespace: "{{ item.namespace }}"
+        name: "{{ item.name }}"
+        wait: true
+        wait_condition:
+          type: Available
+          status: "True"
+        wait_timeout: 300
+      loop: "{{ services }}"
+      loop_control:
+        label: "{{ item.namespace }}/{{ item.name }}"
+
+    - name: Get gateway NLB hostname
+      kubernetes.core.k8s_info:
+        kind: Service
+        namespace: gateway
+        name: gateway-svc
+      register: gw
+      until: gw.resources[0].status.loadBalancer.ingress is defined
+      retries: 30
+      delay: 10
+
+    - name: Show NLB hostname
+      ansible.builtin.debug:
+        msg: "NLB: http://{{ gw.resources[0].status.loadBalancer.ingress[0].hostname }}"

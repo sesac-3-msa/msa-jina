@@ -1,0 +1,45 @@
+# 네임스페이스, JWT Secret, NetworkPolicy
+- name: Create namespaces, secrets and network policy
+  hosts: local
+  gather_facts: false
+
+  vars:
+    namespaces: [gateway, app]
+
+  tasks:
+    - name: Create namespaces
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ item }}"
+      loop: "{{ namespaces }}"
+
+    # gateway(검증)와 member(발급)가 같은 시크릿을 써야 하므로 두 네임스페이스에 동일 값으로 생성
+    - name: Create jwt-secret in each namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: jwt-secret
+            namespace: "{{ item }}"
+          type: Opaque
+          stringData:
+            secret: "{{ jwt_secret }}"
+      loop: "{{ namespaces }}"
+      no_log: true
+
+    # app 네임스페이스는 gateway 네임스페이스에서 오는 인그레스만 허용
+    - name: Apply NetworkPolicy (allow only from gateway namespace)
+      kubernetes.core.k8s:
+        state: present
+        template: templates/networkpolicy.yaml.j2
+      vars:
+        policy:
+          name: allow-from-gateway
+          namespace: app
+          from_namespaces: [gateway]

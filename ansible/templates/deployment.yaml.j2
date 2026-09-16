@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ item.name }}
+  namespace: {{ item.namespace }}
+  labels:
+    app: {{ item.name }}
+spec:
+  replicas: {{ replicas }}          # 요구사항 5번: 컨테이너 2개 이상
+  selector:
+    matchLabels:
+      app: {{ item.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ item.name }}
+    spec:
+      containers:
+        - name: app
+          image: "{{ item.image }}:{{ image_tag }}"
+          ports:
+            - containerPort: 8080
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: secret
+{% for e in item.env | default([]) %}
+            - name: {{ e.name }}
+              value: "{{ e.value }}"
+{% endfor %}
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 40
+            periodSeconds: 10
+      # 두 레플리카를 서로 다른 노드에 분산 (로드밸런싱 시연 명확화)
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: {{ item.name }}

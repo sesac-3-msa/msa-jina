@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ item.name }}
+  namespace: {{ item.namespace }}
+  labels:
+    app: {{ item.name }}
+{% if item.type == 'LoadBalancer' %}
+  annotations:
+    # "external" 이어야 AWS LB Controller가 처리한다 ("nlb"면 EKS 내장 컨트롤러가 잡아 ip 모드 미적용)
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/actuator/health"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "http"
+{% endif %}
+spec:
+  type: {{ item.type }}
+  selector:
+    app: {{ item.name }}
+  ports:
+    - name: http
+      port: {{ item.port | default(8080) }}
+      targetPort: 8080
+      protocol: TCP

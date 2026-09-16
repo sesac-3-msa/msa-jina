@@ -1,0 +1,65 @@
+# SCG와 비교용 ALB Ingress (요구사항 6번).
+# NetworkPolicy가 gateway 네임스페이스만 허용하므로 ALB(퍼블릭 서브넷 ENI) → 파드 트래픽이 막힌다.
+# 비교 실습을 위해 퍼블릭 서브넷 CIDR을 허용하는 정책을 추가한다 — Ingress는 인증을 못 하므로
+# 뒷단 보호를 이런 네트워크 수단에 의존해야 한다는 점 자체가 관찰 포인트.
+- name: Deploy ALB Ingress for comparison
+  hosts: local
+  gather_facts: false
+
+  tasks:
+    - name: Allow ingress from ALB (public subnet CIDRs)
+      kubernetes.core.k8s:
+        state: present
+        template: templates/networkpolicy.yaml.j2
+      vars:
+        policy:
+          name: allow-from-alb
+          namespace: app
+          from_cidrs: "{{ public_subnet_cidrs }}"
+
+    - name: Apply Ingress
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: app-ingress
+            namespace: app
+            annotations:
+              alb.ingress.kubernetes.io/scheme: internet-facing
+              alb.ingress.kubernetes.io/target-type: ip
+              alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
+          spec:
+            ingressClassName: alb
+            rules:
+              - http:
+                  paths:
+                    - path: /api/members
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: member-svc
+                          port:
+                            number: 8080
+                    - path: /api/orders
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: order-svc
+                          port:
+                            number: 8080
+
+    - name: Wait for ALB hostname
+      kubernetes.core.k8s_info:
+        kind: Ingress
+        namespace: app
+        name: app-ingress
+      register: ing
+      until: ing.resources[0].status.loadBalancer.ingress is defined
+      retries: 30
+      delay: 10
+
+    - name: Show ALB hostname
+      ansible.builtin.debug:
+        msg: "ALB: http://{{ ing.resources[0].status.loadBalancer.ingress[0].hostname }}"

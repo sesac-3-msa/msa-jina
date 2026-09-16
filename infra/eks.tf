@@ -21,7 +21,12 @@ module "eks" {
   cluster_addons = {
     coredns    = {}
     kube-proxy = {}
-    vpc-cni    = {}
+    vpc-cni = {
+      # EKS는 기본적으로 NetworkPolicy를 시행하지 않는다. 명시적으로 켜야 app 네임스페이스 격리가 동작한다.
+      configuration_values = jsonencode({
+        enableNetworkPolicy = "true"
+      })
+    }
   }
 
   cloudwatch_log_group_retention_in_days = 1
